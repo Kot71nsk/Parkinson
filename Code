@@ -1,0 +1,95 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+from xgboost import XGBClassifier
+from sklearn.impute import SimpleImputer
+import matplotlib.pyplot as plt
+import sys
+import os
+import time
+!wget https://storage.yandexcloud.net/academy.ai/practica/parkinsons.data
+
+# Загрузка данных
+df = pd.read_csv('parkinsons.data', na_values='?', engine='python')
+
+# Удаление ненужного столбца
+df = df.drop('name', axis=1)
+
+# Обработка пропущенных значений
+df = df.replace('?', np.nan)
+numerical_cols = df.select_dtypes(include=np.number).columns
+
+if len(numerical_cols) > 0:  # Проверка, что есть числовые колонки для обработки
+    imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+    df[numerical_cols] = imputer.fit_transform(df[numerical_cols])
+else:
+    print("Ошибка: В данных нет числовых столбцов для обработки.")
+    exit()
+
+# Разделение на признаки (X) и целевую переменную (y)
+X = df.drop('status', axis=1)
+y = df['status']
+
+# Преобразование в NumPy массивы
+X = X.values
+y = y.values
+
+# Нормализация признаков
+scaler = StandardScaler()
+X = scaler.fit_transform(X)
+
+# Разделение на обучающую и тестовую выборки
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=10)
+
+# Создание и обучение модели XGBoost
+model = XGBClassifier(learning_rate =0.005, max_depth = 3, n_estimators = 10000
+                      ) #eval_metric='logloss', verbose=False
+
+eval_set = [(X_train, y_train), (X_test, y_test)]
+start_time = time.time()
+model.fit(X_train, y_train, eval_set=eval_set)
+end_time = time.time()
+# model.fit(X_train, y_train, eval_set=eval_set)
+
+
+# Предсказание на тестовой выборке
+y_pred = model.predict(X_test)
+
+# Расчет точности
+accuracy = accuracy_score(y_test, y_pred)
+print(f"Точность модели: {accuracy}")
+
+# # Вывод графика ошибок
+results = model.evals_result()
+epochs = len(results['validation_0']['logloss'])
+x_axis = range(0, epochs)
+fig, ax = plt.subplots()
+ax.plot(x_axis, results['validation_0']['logloss'], label='Ошибка обучения')
+ax.plot(x_axis, results['validation_1']['logloss'], label='Ошибка тестирования')
+ax.legend()
+plt.ylabel('Ошибка')
+plt.xlabel('Эпохи')
+plt.title('График ошибок')
+plt.show()
+
+# Вывод графика точности
+train_accuracy = [accuracy_score(y_train, model.predict(X_train)) for _ in range(epochs)]
+test_accuracy = [accuracy_score(y_test, model.predict(X_test)) for _ in range(epochs)]
+fig, ax = plt.subplots()
+ax.plot(x_axis, train_accuracy, label='Точность обучения')
+ax.plot(x_axis, test_accuracy, label='Точность тестирования')
+ax.legend()
+plt.ylabel('Точность')
+plt.xlabel('Эпохи')
+plt.title('График точности')
+plt.show()
+
+# Вывод графика обучения времени модели
+training_time = end_time - start_time  # В секундах
+fig, ax = plt.subplots()
+ax.bar(['Общее время'], [training_time])
+plt.ylabel('Время (сек)')
+plt.title('График обучения времени')
+plt.show()
